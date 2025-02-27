@@ -1,7 +1,7 @@
 import streamlit as st
 
 # Set a wider page layout
-st.set_page_config(layout="wide")
+# st.set_page_config(layout="wide")
 
 # Title and Subtitle
 st.title("Emergency Fund")

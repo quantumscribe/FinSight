@@ -2,6 +2,7 @@ from ast import In
 from re import X
 from personal_calculators import Budget_planner, Car_Loan_emi, Emergency_fund, Retirement_planning, Savings_goal
 import streamlit as st
+st.set_page_config(page_title="FinSight")
 
 # Importing the pages
 landing_page = st.Page(
@@ -78,4 +79,26 @@ pg = st.navigation(
         "Investment Calculators": [SIP_Calculator, FD_Calculator, RD_Calculator, CAGR_Calculator],
     }
 )
+
+st.markdown(
+    """
+    <style>
+    .main .block-container > div:nth-child(1) { /* Target the logo container */
+        display: flex;
+        justify-content: center; /* Center horizontally */
+        align-items: center;     /* Center vertically (if needed) */
+    }
+    .main .block-container > div:nth-child(1) img { /* Target the logo image */
+        max-width: 200px; /* Adjust as needed */
+        height: auto;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.logo("assets/logo.png")
+st.sidebar.text("Personal Finance & Investment Hub")
+
 pg.run()
