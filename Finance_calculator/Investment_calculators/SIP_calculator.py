@@ -1,7 +1,13 @@
+from operator import index
 import streamlit as st
 import pandas as pd
 import math
 import altair as alt
+from st_aggrid import AgGrid
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+import numpy as np
 
 st.title("SIP Calculator")
 
@@ -18,26 +24,63 @@ total_invested = monthly_investment * total_payments
 total_gain = future_value - total_invested
 
 def format_indian_currency(number):
+    """
+    Format a number according to the Indian numbering system (lakhs and crores).
+    Example: 1234567.89 becomes 12,34,567.89
+    """
+    # Round to 2 decimal places and convert to string
     s = str(round(number, 2))
+    
+    # Split the number into integer and decimal parts
     if '.' in s:
         integer_part, decimal_part = s.split('.')
     else:
         integer_part, decimal_part = s, '00'
-    integer_part = integer_part[::-1]
-    formatted_integer = ','.join(integer_part[i:i+3] for i in range(0, len(integer_part), 3))
-    formatted_integer = formatted_integer[::-1]
-    if len(formatted_integer) > 3:
-        formatted_integer = formatted_integer[0:3] + ',' + formatted_integer[3:].replace(',', '', formatted_integer[3:].count(',') -1)
-
+    
+    # Ensure decimal part has exactly 2 digits
+    decimal_part = decimal_part.ljust(2, '0')[:2]
+    
+    # Format the integer part according to Indian numbering system
+    # First, reverse the string to work from right to left
+    reversed_int = integer_part[::-1]
+    
+    # Take the first 3 digits
+    groups = [reversed_int[:3][::-1]]
+    
+    # Then group by 2 digits for the rest
+    for i in range(3, len(reversed_int), 2):
+        if i + 2 <= len(reversed_int):
+            groups.append(reversed_int[i:i+2][::-1])
+        else:
+            groups.append(reversed_int[i:][::-1])
+    
+    # Reverse the groups list and join with commas
+    formatted_integer = ",".join(groups[::-1])
+    
     return f"{formatted_integer}.{decimal_part}"
 
+def get_abbreviated_amount(number):
+    """
+    Returns an abbreviated form of large numbers in Indian format
+    Examples: 
+    - 123000 -> "1.23 lakh"
+    - 12300000 -> "1.23 crore"
+    """
+    if number < 1000:
+        return f"{number:.2f}"
+    elif number < 100000:  # Less than 1 lakh
+        return f"{number/1000:.2f} thousand"
+    elif number < 10000000:  # Less than 1 crore
+        return f"{number/100000:.2f} lakh"
+    else:  # 1 crore or more
+        return f"{number/10000000:.2f} crore"
+
 st.write("### 📊 Results")
-st.write(f"💰 **Total Amount Invested** ₹{format_indian_currency(total_invested)}")
-st.write(f"📈 **Future Value of Investment :** ₹{format_indian_currency(future_value)}")
-st.write(f"📊 **Total Gain :** ₹{format_indian_currency(total_gain)}")
+st.write(f"💰 **Total Amount Invested** ₹{format_indian_currency(total_invested)} ({get_abbreviated_amount(total_invested)})")
+st.write(f"📈 **Future Value of Investment:** ₹{format_indian_currency(future_value)} ({get_abbreviated_amount(future_value)})")
+st.write(f"📊 **Total Gain:** ₹{format_indian_currency(total_gain)} ({get_abbreviated_amount(total_gain)})")
 
-st.write("### 📉 Investment Breakdown")
-
+# Calculate years and investment values
 years = list(range(1, int(investment_period) + 1))
 invested_values = [monthly_investment * 12 * y for y in years]
 
@@ -47,25 +90,282 @@ for y in years:
     future_val = monthly_investment * (((1 + monthly_rate)**months_y - 1) / monthly_rate) * (1 + monthly_rate)
     investment_growth.append(future_val)
 
-growth_df = pd.DataFrame({
-    "Year": years * 2,
-    "Value": invested_values + investment_growth,
-    "Category": ["Invested Amount"] * len(years) + ["Investment Value"] * len(years),
-})
+st.write("### 📈 Investment Growth Visualizations")
 
-chart = (
-    alt.Chart(growth_df)
-    .mark_line(point=True)
-    .encode(
-        x=alt.X("Year:O", title="Year"),
-        y=alt.Y("Value:Q", title="Amount (₹)"),
-        color="Category",
-        tooltip=["Year", "Category", alt.Tooltip("Value:Q", format=",.2f")],
+# Create tabs for different visualizations
+viz_tabs = st.tabs(["Growth Chart", "Contribution Breakdown", "Year-by-Year Growth", "Monthly vs Lump Sum"])
+
+# Tab 1: Enhanced Line Chart (with annotations and better formatting)
+with viz_tabs[0]:
+    # Create a better line chart with Plotly
+    fig = go.Figure()
+    
+    # Add investment line
+    fig.add_trace(go.Scatter(
+        x=years, 
+        y=invested_values,
+        mode='lines+markers',
+        name='Amount Invested',
+        line=dict(color='rgba(50, 168, 82, 0.8)', width=2),
+        marker=dict(size=10)
+    ))
+    
+    # Add growth line
+    fig.add_trace(go.Scatter(
+        x=years, 
+        y=investment_growth,
+        mode='lines+markers',
+        name='Investment Value',
+        line=dict(color='rgba(66, 133, 244, 0.8)', width=3),
+        marker=dict(size=10),
+        fill='tonexty',  # Fill the area between the two lines
+        fillcolor='rgba(66, 133, 244, 0.1)'
+    ))
+    
+    # Calculate the return percentage at the end
+    final_return_pct = (investment_growth[-1] / invested_values[-1] - 1) * 100
+    
+    # Add annotations for the final values
+    fig.add_annotation(
+        x=years[-1],
+        y=investment_growth[-1],
+        text=f"₹{format_indian_currency(investment_growth[-1])} ({get_abbreviated_amount(investment_growth[-1])})",
+        showarrow=True,
+        arrowhead=1,
+        ax=40,
+        ay=-40
     )
-    .interactive()
-)
+    
+    fig.add_annotation(
+        x=years[-1],
+        y=invested_values[-1],
+        text=f"₹{format_indian_currency(invested_values[-1])} ({get_abbreviated_amount(invested_values[-1])})",
+        showarrow=True,
+        arrowhead=1,
+        ax=-40,
+        ay=30
+    )
+    
+    # Add annotation for return percentage
+    fig.add_annotation(
+        x=years[-1] * 0.75,
+        y=investment_growth[-1] * 0.5,
+        text=f"Total Return: {final_return_pct:.1f}%",
+        showarrow=False,
+        font=dict(size=14, color="green"),
+        bordercolor="green",
+        bgcolor="white",
+        borderwidth=1,
+        borderpad=4
+    )
+    
+    # Layout improvements
+    fig.update_layout(
+        title="Investment Growth Over Time",
+        xaxis_title="Year",
+        yaxis_title="Amount (₹)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5
+        ),
+        hovermode="x unified",
+        height=500
+    )
+    
+    # Add rupee symbol to y-axis
+    fig.update_yaxes(tickprefix="₹")
+    
+    # Show the plotly chart
+    st.plotly_chart(fig, use_container_width=True)
 
-st.altair_chart(chart, use_container_width=True)
+# Tab 2: Pie chart showing principal vs. interest
+with viz_tabs[1]:
+    # Create data for pie chart
+    final_investment = invested_values[-1]
+    final_value = investment_growth[-1]
+    interest_earned = final_value - final_investment
+    
+    # Create two columns for the visualization
+    col1, col2 = st.columns([3, 2])
+    
+    with col1:
+        # Create pie chart
+        fig = px.pie(
+            values=[final_investment, interest_earned],
+            names=['Principal Amount', 'Interest Earned'],
+            title="Principal vs. Interest Breakdown",
+            color_discrete_sequence=['rgb(50, 168, 82)', 'rgb(66, 133, 244)'],
+            hole=0.4
+        )
+        
+        # Add percentages
+        fig.update_traces(
+            textposition='inside',
+            textinfo='percent+label',
+            hoverinfo='label+value+percent'
+        )
+        
+        # Update layout
+        fig.update_layout(height=400)
+        
+        # Show chart
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Show key metrics in a clean format
+        st.write("### Contribution Analysis")
+        st.metric(
+            label="Principal Amount", 
+            value=f"₹{format_indian_currency(final_investment)}",
+            delta=f"{(final_investment/final_value*100):.1f}% of total"
+        )
+        st.metric(
+            label="Interest Earned", 
+            value=f"₹{format_indian_currency(interest_earned)}",
+            delta=f"{(interest_earned/final_value*100):.1f}% of total",
+            delta_color="normal"
+        )
+        st.write(f"**ROI:** {(interest_earned/final_investment*100):.2f}%")
+
+# Tab 3: Year-by-year growth analysis
+with viz_tabs[2]:
+    # Calculate year-by-year growth rates
+    yearly_growth_rates = []
+    yearly_additions = []
+    
+    for i in range(len(years)):
+        if i == 0:
+            yearly_growth = investment_growth[i] - invested_values[i]
+            growth_rate = (yearly_growth / invested_values[i]) * 100
+        else:
+            yearly_investment = invested_values[i] - invested_values[i-1]
+            yearly_growth = investment_growth[i] - investment_growth[i-1]
+            yearly_addition = yearly_growth - yearly_investment
+            yearly_additions.append(yearly_addition)
+            growth_rate = (yearly_addition / investment_growth[i-1]) * 100
+        
+        if i > 0:  # Skip first year for growth rate calculation
+            yearly_growth_rates.append(growth_rate)
+    
+    # Create a bar chart for growth contribution
+    year_labels = [f"Year {y}" for y in years[1:]]  # Skip first year
+    
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    
+    # Add bars for yearly interest additions
+    fig.add_trace(
+        go.Bar(
+            x=year_labels,
+            y=yearly_additions,
+            name="Interest Earned",
+            marker_color='rgba(66, 133, 244, 0.8)'
+        )
+    )
+    
+    # Add line for growth rate
+    fig.add_trace(
+        go.Scatter(
+            x=year_labels,
+            y=yearly_growth_rates,
+            name="Growth Rate (%)",
+            mode='lines+markers',
+            marker=dict(size=8, color='rgba(255, 112, 67, 1)'),
+            line=dict(width=2, color='rgba(255, 112, 67, 1)')
+        ),
+        secondary_y=True
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title="Year-by-Year Interest Contribution",
+        height=500,
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5
+        )
+    )
+    
+    # Set y-axes titles
+    fig.update_yaxes(title_text="Interest Earned (₹)", secondary_y=False)
+    fig.update_yaxes(title_text="Growth Rate (%)", secondary_y=True)
+    
+    # Show the figure
+    st.plotly_chart(fig, use_container_width=True)
+
+# Tab 4: SIP vs Lump Sum comparison
+with viz_tabs[3]:
+    # Calculate equivalent lump sum amount (present value of all SIP investments)
+    # This is a simplified calculation for comparison
+    lump_sum_amount = monthly_investment * total_payments / (1 + annual_returns/100)**(investment_period/2)
+    
+    # Calculate lump sum growth
+    lump_sum_growth = [lump_sum_amount * (1 + annual_returns/100)**(y) for y in years]
+    
+    # Create comparison chart
+    fig = go.Figure()
+    
+    # Add SIP investment line
+    fig.add_trace(go.Scatter(
+        x=years, 
+        y=investment_growth,
+        mode='lines',
+        name='SIP Investment',
+        line=dict(color='rgba(66, 133, 244, 0.8)', width=3)
+    ))
+    
+    # Add lump sum investment line
+    fig.add_trace(go.Scatter(
+        x=years, 
+        y=lump_sum_growth,
+        mode='lines',
+        name='Equivalent Lump Sum',
+        line=dict(color='rgba(255, 112, 67, 0.8)', width=3)
+    ))
+    
+    # Layout improvements
+    fig.update_layout(
+        title="SIP vs Lump Sum Comparison",
+        xaxis_title="Year",
+        yaxis_title="Amount (₹)",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="center",
+            x=0.5
+        ),
+        hovermode="x unified",
+        height=500
+    )
+    
+    # Add rupee symbol to y-axis
+    fig.update_yaxes(tickprefix="₹")
+    
+    # Show the chart
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Add explanation
+    st.info(
+        """
+        **SIP vs Lump Sum Comparison:**
+        - The SIP approach involves investing ₹{} monthly over {} years.
+        - The equivalent lump sum amount (₹{}) is the discounted present value of all SIP payments.
+        - This comparison assumes the same annual return of {}% for both approaches.
+        - SIP benefits from rupee-cost averaging in fluctuating markets, which isn't reflected in this theoretical model.
+        """.format(
+            format_indian_currency(monthly_investment),
+            int(investment_period),
+            format_indian_currency(lump_sum_amount),
+            annual_returns
+        )
+    )
 
 st.write("### Investment Data Table")
 
@@ -77,26 +377,10 @@ for y in years:
     table_data.append({"Year": y, "Invested Amount": format_indian_currency(invested), "Investment Value": format_indian_currency(future_val)})
 
 df_table = pd.DataFrame(table_data)
-
-st.markdown(
-    """
-    <style>
-    .center {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-    .dataframe {
-        margin: 0;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-st.markdown('<div class="center">', unsafe_allow_html=True)
-st.dataframe(df_table)
-st.markdown('</div>', unsafe_allow_html=True)
+df_table = df_table.reset_index(drop=True)
+st.write("<div style='display: flex; justify-content: center;'>", unsafe_allow_html=True)
+st.dataframe(df_table, use_container_width=True)
+st.write("</div>", unsafe_allow_html=True)
 
 st.write("### Learn about SIP")
 

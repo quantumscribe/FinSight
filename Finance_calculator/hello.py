@@ -75,8 +75,9 @@ pg = st.navigation(pages=[landing_page,Home_Loan_Repayment_Calculator, SIP_Calcu
 pg = st.navigation(
     {
         "": [landing_page],
+		"Investment Calculators": [SIP_Calculator, FD_Calculator, RD_Calculator, CAGR_Calculator],
         "Personal Finance": [Budget_planner,Savings_goal ,Home_Loan_Repayment_Calculator, Car_Loan_emi, Emergency_fund, Income_tax, Retirement_planning],
-        "Investment Calculators": [SIP_Calculator, FD_Calculator, RD_Calculator, CAGR_Calculator],
+        
     }
 )
 
